@@ -65,8 +65,8 @@ class patroni_tester:
 
    def recognize_host(self):
       try:
-         self.connection.cursor.execute("SELECT pg_is_in_recovery(), inet_server_addr()")
-         rows = self.connection.cursor.fetchone()
+         self.connection.cursor().execute("SELECT pg_is_in_recovery(), inet_server_addr()")
+         rows = self.connection.cursor().fetchone()
          return node_data(*rows)
       except Exception as e:
          self.logger.error('CANNOT RECOGNIZE NODE ROLE', exc_info=True)
@@ -78,12 +78,12 @@ class patroni_tester:
          self.logger.info("NO ATTEMPT TO INSERT DATA")
          return
       
-      self.connection.cursor.execute("INSERT INTO HATEST VALUES(CURRENT_TIMESTAMP) RETURNING TM")
-      if self.connection.cursor.rowcount != 1:
+      self.connection.cursor().execute("INSERT INTO HATEST VALUES(CURRENT_TIMESTAMP) RETURNING TM")
+      if self.connection.cursor().rowcount != 1:
          return
       
       self.connection.commit()
-      tmrow = str(self.connection.cursor.fetchone()[0])
+      tmrow = str(self.connection.cursor().fetchone()[0])
       self.logger.info (f'INSERTED: {tmrow}')
 
    def process_replica(self):
@@ -92,8 +92,8 @@ class patroni_tester:
          return
       
       self.logger.info(f"WORKING WITH REPLICA"),
-      self.connection.cursor.execute("SELECT MAX(TM) FROM HATEST")
-      row = self.connection.cursor.fetchone()
+      self.connection.cursor().execute("SELECT MAX(TM) FROM HATEST")
+      row = self.connection.cursor().fetchone()
       self.logger.info(f'RETRIVED: {str(row[0])}')
 
    def test(self):
