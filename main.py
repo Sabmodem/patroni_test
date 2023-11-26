@@ -1,10 +1,10 @@
-#!/usr/bin/python3
 import os
+import time
 import click
 import logging
 import psycopg2
-from time import sleep
 from datetime import datetime
+# from uuid import uuid4
 
 def setup_logger(name, base_dir=os.getcwd(), level=logging.INFO):
    log_dirname = 'log'
@@ -20,8 +20,8 @@ def setup_logger(name, base_dir=os.getcwd(), level=logging.INFO):
    fhandler = logging.FileHandler(os.path.join(log_dir, f'{name}.{datetime.now().strftime("%H:%M:%S")}.log'))
    shandler = logging.StreamHandler()
 
-   fhandler.setFormatter(logging.Formatter('%(asctime)s [%(name)s] %(levelname)s: %(message)s'))
-   shandler.setFormatter(logging.Formatter('%(asctime)s [%(name)s] %(levelname)s: %(message)s'))
+   fhandler.setFormatter(logging.Formatter('%(asctime)s - [%(levelname)s] -  %(name)s - (%(filename)s).%(funcName)s(%(lineno)d) - %(message)s'))
+   shandler.setFormatter(logging.Formatter('%(asctime)s - [%(levelname)s] -  %(name)s - (%(filename)s).%(funcName)s(%(lineno)d) - %(message)s'))
 
    logger = logging.getLogger(name)
    logger.setLevel(level)
@@ -31,96 +31,84 @@ def setup_logger(name, base_dir=os.getcwd(), level=logging.INFO):
 
    return logger
 
-class node_data:
-   def __init__(self, master, addr):
-      self.master = master
-      self.addr = addr
+class pg:
+    def __init__(self, host, dbname, user, password, timeout, port, logger):
+       self.connection = None
+       self.cursor = None
 
-   def __repr__(self):
-      return f'<NODE_DATA MASTER: {self.master} ADDR: {self.addr}>'
+       self.host = host
+       self.dbname = dbname
+       self.user = user
+       self.password = password
+       self.timeout = timeout
+       self.port = port
+       self.connection_string = f'host={host} port={port} dbname={dbname} user={user} password={password} connect_timeout={timeout}'
 
-class patroni_tester:
-   def __init__(self, host, dbname, user, password, timeout, port, commit):
-      self.host = host
-      self.dbname = dbname
-      self.user = user
-      self.password = password
-      self.timeout = timeout
-      self.port = port
-      self.commit = commit
+       self.logger = logger
 
-      self.connection_string = f'host={host} port={port} dbname={dbname} user={user} password={password} connect_timeout={timeout}'
-      self.logger = setup_logger('PATRONI-HATEST')
-      self.logger.info(f'PATRONI TESTER STARTED WITH PARAMS: {self}')
+    def open(self):
+        try:
+           self.connection = psycopg2.connect(self.connection_string)
+           self.cursor = self.connection.cursor()
+        except psycopg2.Error:
+           self.logger.error("UNABLE TO CONNECT TO DATABASE", exc_info=True)
 
-   def __repr__(self):
-      return f'<PATRONI_TESTER HOST={self.host} DBNAME={self.dbname} USER={self.user} PASSWORD={self.password} TIMEOUT={self.timeout} PORT={self.port} COMMIT={self.commit}>'
+    def close(self):
+        if not self.connection:
+            return
+        self.connection.commit()
+        self.cursor.close()
+        self.connection.close()
 
-   def connect(self):
-      try:
-         self.connection = psycopg2.connect(self.connection_string)
-         self.cursor = self.connection.cursor()
-         return self
-      except psycopg2.Error as e:
-         self.logger.error("UNABLE TO CONNECT TO DATABASE", exc_info=True)
+    def __enter__(self):
+       self.open()
+       return self
 
-   def recognize_host(self):
-      try:
-         self.cursor.execute("SELECT pg_is_in_recovery(), inet_server_addr()")
-         rows = self.cursor.fetchone()
-         return node_data(*rows)
-      except Exception as e:
-         self.logger.error('CANNOT RECOGNIZE NODE ROLE', exc_info=True)
+    def __exit__(self,exc_type,exc_value,traceback):
+       self.close()
 
-   def process_master(self):
-      self.logger.info(f"WORKING WITH MASTER"),
+    def exec_query(self, sql, params=[]):
+       try:
+          self.cursor.execute(sql, params)
+          return self.cursor.fetchall()
+       except psycopg2.ProgrammingError as e:
+          self.logger.info(f'PROGRAMMING ERROR EXCEPTED. MAY BE RESULTS IS NOT EXISTS. TEXT: {e}')
+       except Exception as e:
+          self.logger.error(e, exc_info=True)
 
-      if not self.commit:
-         self.logger.info("NO ATTEMPT TO INSERT DATA")
-         return
+def prepare_db(host, dbname, user, password, timeout, master_port, logger):
+   with pg(host, dbname, user, password, timeout, master_port, logger) as db:
+      db.exec_query('CREATE TABLE IF NOT EXISTS hatest(tm INT)')
 
-      self.cursor.execute("INSERT INTO HATEST VALUES(CURRENT_TIMESTAMP) RETURNING TM")
-      if self.cursor.rowcount != 1:
-         return
+def test(host, dbname, user, password, timeout, master_port, replica_port, logger):
+   data = int(time.time())
+   # data = str(uuid4())
+   logger.info(f'ATTEMPT TO INSERT TEST DATA: {data}')
+   with pg(host, dbname, user, password, timeout, master_port, logger) as db:
+      db.exec_query('INSERT INTO hatest VALUES(%s)', [data])
 
-      self.connection.commit()
-      tmrow = str(self.cursor.fetchone()[0])
-      self.logger.info (f'INSERTED: {tmrow}')
+   time.sleep(1)
 
-   def process_replica(self):
-      if not self.commit:
-         self.logger.info ('NO ATTEMPT TO RETRIVE DATA')
-         return
+   logger.info(f'ATTEMPT TO RETRIVE TEST DATA')
+   with pg(host, dbname, user, password, timeout, replica_port, logger) as db:
+      retrived = db.exec_query('SELECT MAX(tm) FROM hatest')[0][0]
+      logger.info(f'RETRIVED: {retrived}')
 
-      self.logger.info(f"WORKING WITH REPLICA"),
-      self.cursor.execute("SELECT MAX(TM) FROM HATEST")
-      row = self.cursor.fetchone()
-      self.logger.info(f'RETRIVED: {str(row[0])}')
-
-   def test(self):
-      while 1:
-         try:
-            sleep(1)
-            self.connect()
-            nd = self.recognize_host()
-            self.logger.info(f'WORKING WITH HOST: {nd}')
-            if nd.master:
-               self.process_master()
-            else:
-               self.process_replica()
-         except Exception as e:
-            self.logger.error('ERROR ON TEST PROCESSING', exc_info=True)
+   logger.info(f'TEST DATA: {data}; RETRIVED: {retrived}; TEST SUCCESSFULL: {data == retrived}')
 
 @click.command()
-@click.option('-h', '--host', type=str, default='127.0.0.1', show_default=True)
+@click.option('-h', '--host', type=str, default='127.0.0.1', show_default=True, help='haproxy host')
 @click.option('-d', '--dbname', type=str, default='postgres', show_default=True)
 @click.option('-u', '--user', type=str, default='postgres', show_default=True)
 @click.option('-p', '--password', type=str)
 @click.option('-t', '--timeout', type=int, default=5, show_default=True, help='Connection timeout')
-@click.option('-c', '--commit', type=bool, default=False, show_default=True, help='Whether to make changes to the database or not')
-@click.argument('port')
-def main(host, dbname, user, password, timeout, port, commit):
-   return patroni_tester(host, dbname, user, password, timeout, port, commit).test()
+@click.argument('master_port')
+@click.argument('replica_port')
+def main(host, dbname, user, password, timeout, master_port, replica_port):
+   logger = setup_logger('patroni-tester')
+   prepare_db(host, dbname, user, password, timeout, master_port, logger)
+   # while True:
+   test(host, dbname, user, password, timeout, master_port, replica_port, logger)
 
 if __name__ == "__main__":
    main()
