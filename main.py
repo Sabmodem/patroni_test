@@ -28,9 +28,9 @@ def setup_logger(name, base_dir=os.getcwd(), level=logging.INFO):
 
    logger.addHandler(fhandler)
    logger.addHandler(shandler)
-   
+
    return logger
- 
+
 class node_data:
    def __init__(self, master, addr):
       self.master = master
@@ -38,7 +38,7 @@ class node_data:
 
    def __repr__(self):
       return f'<NODE_DATA MASTER: {self.master} ADDR: {self.addr}>'
-      
+
 class patroni_tester:
    def __init__(self, host, dbname, user, password, timeout, port, commit):
       self.host = host
@@ -74,15 +74,15 @@ class patroni_tester:
 
    def process_master(self):
       self.logger.info(f"WORKING WITH MASTER"),
-      
+
       if not self.commit:
          self.logger.info("NO ATTEMPT TO INSERT DATA")
          return
-      
+
       self.cursor.execute("INSERT INTO HATEST VALUES(CURRENT_TIMESTAMP) RETURNING TM")
       if self.cursor.rowcount != 1:
          return
-      
+
       self.connection.commit()
       tmrow = str(self.cursor.fetchone()[0])
       self.logger.info (f'INSERTED: {tmrow}')
@@ -91,7 +91,7 @@ class patroni_tester:
       if not self.commit:
          self.logger.info ('NO ATTEMPT TO RETRIVE DATA')
          return
-      
+
       self.logger.info(f"WORKING WITH REPLICA"),
       self.cursor.execute("SELECT MAX(TM) FROM HATEST")
       row = self.cursor.fetchone()
@@ -124,4 +124,3 @@ def main(host, dbname, user, password, timeout, port, commit):
 
 if __name__ == "__main__":
    main()
-
