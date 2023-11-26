@@ -18,16 +18,16 @@ def setup_logger(name, base_dir=os.getcwd(), level=logging.INFO):
       os.mkdir(log_dir)
 
    fhandler = logging.FileHandler(os.path.join(log_dir, f'{name}.{datetime.now().strftime("%H:%M:%S")}.log'))
-   shandler = logging.StreamHandler()
+   # shandler = logging.StreamHandler()
 
    fhandler.setFormatter(logging.Formatter('%(asctime)s - [%(levelname)s] -  %(name)s - (%(filename)s).%(funcName)s(%(lineno)d) - %(message)s'))
-   shandler.setFormatter(logging.Formatter('%(asctime)s - [%(levelname)s] -  %(name)s - (%(filename)s).%(funcName)s(%(lineno)d) - %(message)s'))
+   # shandler.setFormatter(logging.Formatter('%(asctime)s - [%(levelname)s] -  %(name)s - (%(filename)s).%(funcName)s(%(lineno)d) - %(message)s'))
 
    logger = logging.getLogger(name)
    logger.setLevel(level)
 
    logger.addHandler(fhandler)
-   logger.addHandler(shandler)
+   # logger.addHandler(shandler)
 
    return logger
 
@@ -91,8 +91,12 @@ def test(host, dbname, user, password, timeout, master_port, replica_port, logge
 
    logger.info(f'ATTEMPT TO RETRIVE TEST DATA')
    with pg(host, dbname, user, password, timeout, replica_port, logger) as db:
-      retrived = db.exec_query('SELECT MAX(tm) FROM hatest')[0][0]
-      logger.info(f'RETRIVED: {retrived}')
+      try:
+         retrived = db.exec_query('SELECT MAX(tm) FROM hatest')[0][0]
+         logger.info(f'RETRIVED: {retrived}')
+      except TypeError as e:
+         logger.info('ERROR OF RETRIVING DATA. TEST SUCCESSFULL: False')
+         return
 
    logger.info(f'TEST DATA: {data}; RETRIVED: {retrived}; TEST SUCCESSFULL: {data == retrived}')
 
@@ -107,8 +111,8 @@ def test(host, dbname, user, password, timeout, master_port, replica_port, logge
 def main(host, dbname, user, password, timeout, master_port, replica_port):
    logger = setup_logger('patroni-tester')
    prepare_db(host, dbname, user, password, timeout, master_port, logger)
-   # while True:
-   test(host, dbname, user, password, timeout, master_port, replica_port, logger)
+   while True:
+     test(host, dbname, user, password, timeout, master_port, replica_port, logger)
 
 if __name__ == "__main__":
    main()
