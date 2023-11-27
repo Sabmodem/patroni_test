@@ -1,5 +1,4 @@
 psql -U postgres -p 5000 -h 127.0.0.1 -c "SELECT * FROM hatest" > result.txt
-
      tm     
 ------------
  1701038973

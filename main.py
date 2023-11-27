@@ -4,7 +4,6 @@ import click
 import logging
 import psycopg2
 from datetime import datetime
-# from uuid import uuid4
 
 def setup_logger(name, base_dir=os.getcwd(), level=logging.INFO):
    log_dirname = 'log'
@@ -18,16 +17,13 @@ def setup_logger(name, base_dir=os.getcwd(), level=logging.INFO):
       os.mkdir(log_dir)
 
    fhandler = logging.FileHandler(os.path.join(log_dir, f'{name}.{datetime.now().strftime("%H:%M:%S")}.log'))
-   # shandler = logging.StreamHandler()
 
    fhandler.setFormatter(logging.Formatter('%(asctime)s - [%(levelname)s] -  %(name)s - (%(filename)s).%(funcName)s(%(lineno)d) - %(message)s'))
-   # shandler.setFormatter(logging.Formatter('%(asctime)s - [%(levelname)s] -  %(name)s - (%(filename)s).%(funcName)s(%(lineno)d) - %(message)s'))
 
    logger = logging.getLogger(name)
    logger.setLevel(level)
 
    logger.addHandler(fhandler)
-   # logger.addHandler(shandler)
 
    return logger
 
@@ -82,7 +78,6 @@ def prepare_db(host, dbname, user, password, timeout, master_port, logger):
 
 def test(host, dbname, user, password, timeout, master_port, replica_port, logger):
    data = int(time.time())
-   # data = str(uuid4())
    logger.info(f'ATTEMPT TO INSERT TEST DATA: {data}')
    with pg(host, dbname, user, password, timeout, master_port, logger) as db:
       db.exec_query('INSERT INTO hatest VALUES(%s)', [data])
